@@ -1,0 +1,15 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP AudioJack3_Ring_Switch
+D Audio Jack, 3 Poles (Stereo / TRS), Switched Poles (Normalling)
+K audio jack receptacle stereo headphones connector
+F ~
+$ENDCMP
+#
+$CMP R_POT_W_GND
+D Potentiometer
+K resistor variable
+F ~
+$ENDCMP
+#
+#End Doc Library

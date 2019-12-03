@@ -1,0 +1,4 @@
+(sym_lib_table
+  (lib (name SyncStation-rescue)(type Legacy)(uri ${KIPRJMOD}/Sync-chan-rescue.lib)(options "")(descr ""))
+  (lib (name Sync-chan)(type Legacy)(uri ${KIPRJMOD}/lib/Sync-chan.lib)(options "")(descr ""))
+)
