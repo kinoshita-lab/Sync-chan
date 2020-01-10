@@ -1,6 +1,8 @@
 #include "Pins.h"
 #include "HardwareInspection.h"
-#include "TM1627.h"
+#include "TM1640.h"
+
+TM1640 tm(pin::DIN_7Seg, pin::SCLK_7Seg);
 
 pin::DigitalPinConfig digitalPinConfigs[] = 
 {
@@ -13,9 +15,6 @@ pin::DigitalPinConfig digitalPinConfigs[] =
     {pin::Led_Internal, OUTPUT},
     {pin::Led_External, OUTPUT},
     {pin::Led_Fader_Center, OUTPUT},
-    {pin::DIO_7Seg, OUTPUT},
-    {pin::CLK_7Seg, OUTPUT},
-    {pin::STB_7Seg, OUTPUT},
 };
 
 namespace bootMode
@@ -46,21 +45,6 @@ void setup()
     const auto testMode = getBootMode();
     Serial.print("Boot Mode: ");
     Serial.println(testMode);
-
-    digitalWrite(pin::STB_7Seg, LOW);
-    TM1627 tm1627(5, pin::STB_7Seg, pin::CLK_7Seg, pin::DIO_7Seg);
-    tm1627.init();
-
-    uint8_t array[14];
-    for (uint16_t n = 0; n <= 0xFF; ++n) {
-        for (auto i = 0; i < 14; ++i) {
-            array[i] = n;
-        }
-        tm1627.sendLedData(array);
-        Serial.println(n);
-    }
-
-
     
     // todo: switch app and inspection
     startHardwareInspection();
