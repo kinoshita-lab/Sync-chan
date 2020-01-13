@@ -93,16 +93,16 @@ class TM1640 {
     }
   }
 
-  bool dp;
+
   bool changed;
   uint8_t patterns[NUM_DIGITS];
 
 public:
-
+  bool dp;
 
   TM1640(const uint8_t Din_Pin, const uint8_t Sclk_Pin)
       : Din_Pin(Din_Pin), Sclk_Pin(Sclk_Pin) {}
-
+  
   void init() {
     dp = false;
     changed = false;
@@ -160,6 +160,9 @@ public:
 
   void setDigit(const int digit, const uint8_t value) {
       uint8_t pattern = toLedPattern(value);
+      if (dp && digit == 2) {
+        pattern |= DIGIT_DP;
+      }
       if (patterns[digit] != pattern) {
           changed = true;
           patterns[digit] = pattern;
@@ -176,13 +179,10 @@ public:
       sendByte(0b11000000); // from 0
 
       for (auto i = 0; i < NUM_DIGITS; ++i) {
-          uint8_t data = patterns[i];
-          if (i == 2 && dp) {
-              data |= DIGIT_DP;
-          }
-
+          uint8_t data = patterns[i];          
           sendByte(data);
       }
+
       endCondition();
   }
 
