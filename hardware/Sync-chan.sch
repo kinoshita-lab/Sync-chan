@@ -53,12 +53,12 @@ F 3 "" H 3400 1700 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:C C1
+L Device:CP C1
 U 1 1 5CDB5ED1
 P 3400 1450
 F 0 "C1" H 3515 1496 50  0000 L CNN
 F 1 "100u" H 3515 1405 50  0000 L CNN
-F 2 "Capacitors_SMD:C_1206_HandSoldering" H 3438 1300 50  0001 C CNN
+F 2 "Capacitor_SMD:CP_Elec_6.3x7.7" H 3438 1300 50  0001 C CNN
 F 3 "~" H 3400 1450 50  0001 C CNN
 	1    3400 1450
 	1    0    0    -1  
@@ -921,12 +921,12 @@ F 3 "" H 5600 4550 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:C C7
+L Device:CP C7
 U 1 1 5E97DEBC
 P 5600 4400
 F 0 "C7" H 5715 4446 50  0000 L CNN
 F 1 "100u" H 5715 4355 50  0000 L CNN
-F 2 "Capacitors_SMD:C_1206_HandSoldering" H 5638 4250 50  0001 C CNN
+F 2 "Capacitor_SMD:CP_Elec_6.3x7.7" H 5638 4250 50  0001 C CNN
 F 3 "~" H 5600 4400 50  0001 C CNN
 	1    5600 4400
 	1    0    0    -1  
