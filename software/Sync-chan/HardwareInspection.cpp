@@ -49,7 +49,7 @@ void allLedOff() {
 }
 
 auto printAdcValue = [](TM1640& tm, const uint16_t value) {
-    uint8_t values[TM1640::NUM_DIGITS];
+    uint8_t values[4];
 
     if (value <= 999) {
       values[0] = 0;
@@ -71,7 +71,7 @@ auto printAdcValue = [](TM1640& tm, const uint16_t value) {
 
     values[3] = ((value % 1000) % 100) % 10;
 
-    for (auto i = 0; i < TM1640::NUM_DIGITS; i++) {
+    for (auto i = 0; i < 4; i++) {
       tm.setDigit(i, values[i]);
     }
     tm.loop();

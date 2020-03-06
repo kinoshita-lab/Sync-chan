@@ -3,8 +3,13 @@
 #include "TM1640.h"
 #include "ArduinoTapTempo.h"
 #include "AdcReader.h"
+#include "BootMode.h"
 
+#include "MsTimer2.h"
+
+bool timerStarted = false;
 int globalTempo = 1200;
+int timerValue = 0;
 TM1640 tm(pin::DIN_7Seg, pin::SCLK_7Seg);
 ArduinoTapTempo tapTempo;
 
@@ -24,25 +29,6 @@ pin::DigitalPinConfig digitalPinConfigs[] =
     {pin::Led_Fader_Center, OUTPUT},
 };
 
-namespace bootMode
-{
-enum
-{
-    Normal = 7,
-    Inspection = 6,
-};
-}
-int getBootMode()
-{
-    uint8_t switchPattern = 0;
-    switchPattern |= (digitalRead(pin::NudgeMinus) << 2);
-    switchPattern |= (digitalRead(pin::NudgePlus) << 1);
-    switchPattern |= (digitalRead(pin::Tap));
-
-    return switchPattern;
-}
-
-
 void setup()
 {
     for (auto&& dpc : digitalPinConfigs) {
@@ -50,15 +36,15 @@ void setup()
     }
 
     Serial.begin(115200);
-    const auto bootMode = getBootMode();
+    const auto mode = BootMode::getBootMode();
     Serial.print("Boot Mode: ");
-    Serial.println(bootMode);
+    Serial.println(mode);
     
-    if (bootMode == bootMode::Inspection) {
+    if (mode == BootMode::Inspection) {
         startHardwareInspection();
     }
-    tm.init();
-    tm.dp = true;
+    
+    tm.init(4, 2);
     
 #if 0
     // TIMER 2 for interrupt frequency 200000 Hz:
@@ -78,34 +64,18 @@ void setup()
 #endif    
 }
 
-ISR(TIMER2_COMPA_vect){
-   //interrupt commands for TIMER 2 here
-}
-
 
 void updateTempo7Seg(const uint16_t tempo)
 {
-    uint8_t digits[TM1640::NUM_DIGITS];
+    uint8_t digits[4];
     digits[0] = tempo / 1000;
     digits[1] = (tempo % 1000) / 100;
     digits[2] = ((tempo % 1000)  % 100) / 10;
     digits[3] = ((tempo % 1000)  % 100) % 10;
 
-    for (auto i = 0; i < TM1640::NUM_DIGITS; i++) {
+    for (auto i = 0; i < 4; i++) {
         tm.setDigit(i, digits[i]);
     }
-}
-
-uint32_t readAdc(const int pin) {
-    const int numLoop = 8;
-    uint32_t sum = 0;
-
-    for (auto i = 0; i < numLoop; ++i) {
-        sum += analogRead(pin) >> 3 << 3;
-    }
-
-    return sum >> 3;
-
 }
 
 int nudge() 
@@ -116,10 +86,19 @@ int nudge()
     return minus + plus;
 }
 
+bool onOff = false;
+
+void timerFunction()
+{
+    digitalWrite(pin::Sync_Out, onOff ? HIGH : LOW);
+    onOff = !onOff;
+}
+
 int bpmToSyncTimerCounter(const float bpm) 
 {   
-    const auto ret = 6000000 / bpm / 4.f;
+    const auto ret = (int)((60000 / bpm / 8.f) + 0.5);
     Serial.println(ret);
+    
     
     return ret;
 }
@@ -134,7 +113,7 @@ void loop()
     const int tap = (int)(tapTempo.getBPM() * 10);
     globalTempo = tap;
 #endif
-    auto knob = tempoAdc.read();
+    auto knob = tempoAdc.read();    
     auto knobBpm = map(knob, 0, 1023, 3000, 24000);
     knobBpm = knobBpm - knobBpm % 100;
     knobBpm /= 10;
@@ -149,8 +128,15 @@ void loop()
     auto actualTempo = knobBpm * (100.f + faderPercent) / 100.f;
     int nudgeTempo = actualTempo + (actualTempo * nudge() * 1.2 / 100.f);    
     updateTempo7Seg(nudgeTempo);
-    Serial.println(nudgeTempo);
+
+
     tm.loop();
-    bpmToSyncTimerCounter(nudgeTempo / 10.f);
+    const auto newTimerValue = bpmToSyncTimerCounter(nudgeTempo / 10.f);
+
+    if (timerValue != newTimerValue) {
+        timerValue = newTimerValue;
+        MsTimer2::set(timerValue, timerFunction);
+        MsTimer2::start();
+    }
 }
 

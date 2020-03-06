@@ -7,17 +7,21 @@ private:
 
 public:
     AdcReader(const int adcPin)
-        : adcPin(adcPin), oldValue(roundWithShift(analogRead(adcPin))) {}
+        : adcPin(adcPin), value(roundWithShift(analogRead(adcPin))) {}
 
+    // need dead band and kinda hysteresis
     int read() {
-        const auto raw = analogRead(adcPin) >> SHIFT_ROUND << SHIFT_ROUND;
-        const auto absDelta = abs(raw - oldValue);
+        
+        int sum = 0;        
 
-        if (absDelta > DEAD_BAND) {
-            oldValue = raw;
+        for (auto i = 0; i < 4; ++i) {
+            const auto raw = analogRead(adcPin) >> SHIFT_ROUND << SHIFT_ROUND;            
+            sum += raw;
         }
+        sum >>= 2;
+        value = (int)(value * 0.95 + sum * 0.05);
 
-        return oldValue;
+        return value;
     }
     
 private:
@@ -28,7 +32,5 @@ private:
     };
     
     int adcPin;
-    int oldValue;
-
-    // todo: need some ema parameters
+    int value;
 };

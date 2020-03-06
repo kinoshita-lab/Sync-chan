@@ -1,3 +1,4 @@
+#if 0
 #ifndef HighResolutionMsTimer2_h
 #define HighResolutionMsTimer2_h
 
@@ -22,4 +23,5 @@ void stop();
 void _overflow();
 } // namespace HighResolutionMsTimer2
 
+#endif
 #endif

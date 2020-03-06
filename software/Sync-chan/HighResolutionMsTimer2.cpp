@@ -1,3 +1,4 @@
+#if 0
 /*
   HighResolutionMsTimer2.h - Using timer2 with 1ms resolution
   Javier Valencia <javiervalencia80@gmail.com>
@@ -226,3 +227,4 @@ TCNT2 = HighResolutionMsTimer2::tcnt2;
   HighResolutionMsTimer2::_overflow();
 }
 #endif // AVR
+#endif

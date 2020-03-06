@@ -2,10 +2,6 @@
 #include <stdint.h>
 
 class TM1640 {
-  public:
-    enum {
-      NUM_DIGITS = 4,
-    };
 
   private:
     uint8_t Din_Pin;
@@ -28,9 +24,10 @@ class TM1640 {
       NUM_DIGIT_TABLE_ELEM,
     };
 
+    // seems unnecessary for ATmega328 based arduino
     void wait() {
       // delay(1);
-  }
+    }
 
   uint8_t toLedPattern(const uint8_t number) {
     switch (number) {
@@ -92,21 +89,23 @@ class TM1640 {
       data >>= 1;
     }
   }
-
-
+  int dp; // -1 for no decimal point
+  int numDigits;
   bool changed;
-  uint8_t patterns[NUM_DIGITS];
+  uint8_t patterns[16];
 
 public:
-  bool dp;
+
 
   TM1640(const uint8_t Din_Pin, const uint8_t Sclk_Pin)
       : Din_Pin(Din_Pin), Sclk_Pin(Sclk_Pin) {}
   
-  void init() {
-    dp = false;
+  void init(const int _numDigits=0, const int _dp=0) {
+    dp = _dp;
+    numDigits = _numDigits;
+
     changed = false;
-    for (auto i = 0; i < NUM_DIGITS; ++i) {
+    for (auto i = 0; i < numDigits; ++i) {
       patterns[i] = 0;
     }
 
@@ -121,7 +120,7 @@ public:
     endCondition();
 
     startCondition();
-    sendByte(0b10001100);
+    sendByte(0b00000001);
     endCondition();
 
     allOn();
@@ -131,7 +130,8 @@ public:
     startCondition();
     sendByte(0b11000000); // from 0
     startCondition();
-    for (auto i = 0; i < 4; ++i) {
+    
+    for (auto i = 0; i < numDigits; ++i) {
       uint8_t sendData = 0xFF;
       sendByte(sendData);
     }
@@ -160,15 +160,17 @@ public:
 
   void setDigit(const int digit, const uint8_t value) {
       uint8_t pattern = toLedPattern(value);
-      if (dp && digit == 2) {
+      if (dp == digit) {
         pattern |= DIGIT_DP;
       }
+
       if (patterns[digit] != pattern) {
           changed = true;
           patterns[digit] = pattern;
       }
   }
 
+  // call it from loop()
   void loop() 
   {
       if (!changed) {
@@ -178,7 +180,7 @@ public:
       startCondition();
       sendByte(0b11000000); // from 0
 
-      for (auto i = 0; i < NUM_DIGITS; ++i) {
+      for (auto i = 0; i < numDigits; ++i) {
           uint8_t data = patterns[i];          
           sendByte(data);
       }
