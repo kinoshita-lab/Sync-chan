@@ -7,12 +7,15 @@
 #include "TM1640.h"
 #include "TimerOne.h"
 
+#include "SyncBpm.h"
+
 uint32_t timerValue = 0;
 
 TM1640 tm1640(pin::DIN_7Seg, pin::SCLK_7Seg);
 ArduinoTapTempo tapTempo;
 AdcReader tempoAdc(pin::Tempo);
 AdcReader faderAdc(pin::Fader);
+SyncBpm syncBpm;
 
 pin::DigitalPinConfig digitalPinConfigs[] = {
     {pin::Sync_Out, OUTPUT},
@@ -50,16 +53,10 @@ void switchMode(const Mode newMode)
     switch (mode) {
     case INTERNAL_MODE:
         led_internal = HIGH;
-        tapTempo.resetEverything();
-        tapTempo.setMinBPM(30.0);
-        tapTempo.setMaxBPM(240.0);
         break;
     case EXTERNAL_MODE:
         led_external = HIGH;
-        tapTempo.resetEverything();
-        tapTempo.setMaxBPM(960.0);
-        tapTempo.setMinBPM(120.0);
-        timerValue = bpmToSyncTimerCounter(1200 / 10.f); // default bpm for checking sync connection
+        timerValue   = bpmToSyncTimerCounter(1200 / 10.f); // default bpm for checking sync connection
         break;
     default:
         break;
@@ -93,7 +90,10 @@ void externalSyncInterrupt()
 
     const auto pinState = digitalRead(pin::Ext_Sync);
     digitalWrite(pin::Sync_Out, pinState);
-    tapTempo.update(pinState);
+
+    if (pinState == HIGH) {
+        syncBpm.incomingPulse();
+    }
 }
 
 void setup()
@@ -155,6 +155,7 @@ void timerFunction()
         externalSyncNotCommingCounter++;
 
         if (externalSyncNotCommingCounter >= 16) {
+            externalSyncNotCommingCounter = 0;
             switchMode(INTERNAL_MODE);
         }
     }
@@ -218,7 +219,7 @@ void internalMode_loop()
     const auto buttonDown = digitalRead(pin::Tap) == LOW;
     tapTempo.update(buttonDown);
 
-    uint32_t newTapTempo = 0;
+    int32_t newTapTempo  = 0;
     bool tapTempoChanged = false;
     if (buttonDown) {
         tapTempoChanged = true;
@@ -233,7 +234,7 @@ void internalMode_loop()
         lastKnobTempo    = knobTempo;
     }
 
-    uint32_t newTempo = 0;
+    int32_t newTempo = 0;
     if (tapTempoChanged) {
         newTempo = newTapTempo;
     } else if (knobTempoChanged) {
@@ -242,10 +243,9 @@ void internalMode_loop()
         newTempo = lastTempo;
     }
     lastTempo = newTempo;
-    Serial.println(newTempo);
 
-    const uint32_t nudgedTempo = newTempo + (newTempo * nudge() * 1.2 / 100.f);
-    const uint32_t faderTempo  = nudgedTempo * (100.f + getFaderPercent()) / 100.f;
+    const int32_t nudgedTempo = newTempo + (newTempo * nudge() * 1.2 / 100.f);
+    const int32_t faderTempo  = nudgedTempo * (100.f + getFaderPercent()) / 100.f;
 
     updateTempo7Seg(faderTempo);
 
@@ -256,11 +256,13 @@ void internalMode_loop()
     }
 }
 
+int lastExternalBpm = 0;
 void externalMode_loop()
 {
-    const auto pinState = digitalRead(pin::Ext_Sync);
+    const auto externalBpm = (int)(syncBpm.getBPM() * 10);
 
-    tapTempo.update(pinState);
-    const auto externalTempo = (int)(tapTempo.getBPM() * 10 / 4.f);
-    updateTempo7Seg(externalTempo);
+    if (externalBpm != lastExternalBpm) {
+        lastExternalBpm = externalBpm;
+        updateTempo7Seg(externalBpm);
+    }
 }
