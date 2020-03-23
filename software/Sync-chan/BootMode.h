@@ -1,13 +1,13 @@
-#include <stdint.h>
-#include <Arduino.h>
 #include "Pins.h"
 
-namespace BootMode
+namespace bootMode
 {
-enum 
+enum
 {
-  Normal = 7,
-  Inspection = 6,
+    NORMAL_1STEP = 7,
+    NORMAL_2STEP = 6,
+
+    INSPECTION = 0,
 };
 int getBootMode();
 }

@@ -13,6 +13,8 @@ uint32_t timerValue = 0;
 TM1640 tm1640(pin::DIN_7Seg, pin::SCLK_7Seg);
 ArduinoTapTempo tapTempo;
 
+int externalTempo = 1200;
+
 AdcReader tempoAdc(pin::Tempo);
 AdcReader faderAdc(pin::Fader);
 
@@ -28,20 +30,75 @@ pin::DigitalPinConfig digitalPinConfigs[] = {
     {pin::Led_Fader_Center, OUTPUT},
 };
 
+enum
+{
+    INTERNAL_PULSE_MSEC = 5, // original spec seems 15msec
+};
+
 enum Mode
 {
     INTERNAL_MODE,
     EXTERNAL_MODE,
+    UNKNOWN_MODE,
 };
-Mode mode = INTERNAL_MODE;
 
-void internalMode();
-void externalMode();
+Mode mode = UNKNOWN_MODE;
+
+void switchMode(const Mode newMode)
+{
+    mode = newMode;
+
+    auto led_internal = LOW;
+    auto led_external = LOW;
+
+    switch (mode) {
+    case INTERNAL_MODE:
+        led_internal = HIGH;
+        tapTempo.setMaxBPM(240.0);
+        tapTempo.setMinBPM(30.0);
+        break;
+    case EXTERNAL_MODE:
+        led_external = HIGH;
+        tapTempo.setMaxBPM(960.0);
+        tapTempo.setMinBPM(120.0);
+        timerValue = bpmToSyncTimerCounter(1200 / 10.f); // default bpm for checking sync connection
+        break;
+    default:
+        break;
+    }
+
+    digitalWrite(pin::Led_Internal, led_internal);
+    digitalWrite(pin::Led_External, led_external);
+}
+
+void internalMode_loop();
+void externalMode_loop();
 
 void timer2Callback()
 {
-    digitalWrite(pin::Sync_Out, LOW);
+    if (mode == INTERNAL_MODE) {
+        digitalWrite(pin::Sync_Out, LOW);
+    }
+
     MsTimer2::stop();
+}
+
+int interruptCounter              = 0; // todo follow step size
+int externalSyncNotCommingCounter = 0;
+void externalSyncInterrupt()
+{
+    externalSyncNotCommingCounter = 0;
+
+    if (mode == INTERNAL_MODE) {
+        switchMode(EXTERNAL_MODE);
+    }
+
+    const auto pinState = digitalRead(pin::Ext_Sync);
+    digitalWrite(pin::Sync_Out, pinState);
+
+    tapTempo.update(pinState);
+    externalTempo = (int)(tapTempo.getBPM() * 2.5f);
+    updateTempo7Seg(externalTempo);
 }
 
 void setup()
@@ -51,18 +108,22 @@ void setup()
     }
 
     Serial.begin(115200);
-    const auto mode = BootMode::getBootMode();
+    const auto mode = bootMode::getBootMode();
     Serial.print("Boot Mode: ");
     Serial.println(mode);
 
-    if (mode == BootMode::Inspection) {
+    if (mode == bootMode::INSPECTION) {
         startHardwareInspection();
     }
+
+    MsTimer2::set(INTERNAL_PULSE_MSEC, timer2Callback);
+    tm1640.init(4, 2);
+
     Timer1.initialize();
     Timer1.attachInterrupt(timerFunction);
     Timer1.start();
-    MsTimer2::set(5, timer2Callback);
-    tm1640.init(4, 2);
+    switchMode(INTERNAL_MODE);
+    attachInterrupt(digitalPinToInterrupt(pin::Ext_Sync), externalSyncInterrupt, CHANGE);
 }
 
 void updateTempo7Seg(const uint16_t tempo)
@@ -86,12 +147,22 @@ int nudge()
     return minus + plus;
 }
 
-bool onOff = false;
 void timerFunction()
 {
-    digitalWrite(pin::Sync_Out, HIGH);
-    Timer1.setPeriod(timerValue); // timer period must be set here to make "continuous" tempo output
-    MsTimer2::start();
+    if (mode == INTERNAL_MODE) {
+        digitalWrite(pin::Sync_Out, HIGH);
+        Timer1.setPeriod(timerValue); // timer period must be set here to make "continuous" tempo output
+        MsTimer2::start();
+        return;
+    }
+
+    if (mode == EXTERNAL_MODE) {
+        externalSyncNotCommingCounter++;
+
+        if (externalSyncNotCommingCounter >= 16) {
+            switchMode(INTERNAL_MODE);
+        }
+    }
 }
 
 uint32_t bpmToSyncTimerCounter(const float bpm)
@@ -102,7 +173,22 @@ uint32_t bpmToSyncTimerCounter(const float bpm)
 
 void loop()
 {
+    switch (mode) {
+    case INTERNAL_MODE:
+        internalMode_loop();
+        break;
+    case EXTERNAL_MODE:
+        externalMode_loop();
+        break;
+    default:
+        break;
+    }
 
+    tm1640.loop();
+}
+
+void internalMode_loop()
+{
     const auto buttonDown = digitalRead(pin::Tap) == LOW;
     tapTempo.update(buttonDown);
     if (buttonDown) {
@@ -132,10 +218,13 @@ void loop()
     int nudgeTempo   = actualTempo + (actualTempo * nudge() * 1.2 / 100.f);
     updateTempo7Seg(nudgeTempo);
 
-    tm1640.loop();
     const auto newTimerValue = bpmToSyncTimerCounter(nudgeTempo / 10.f);
 
     if (timerValue != newTimerValue) {
         timerValue = newTimerValue;
     }
+}
+
+void externalMode_loop()
+{
 }
