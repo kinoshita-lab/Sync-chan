@@ -1,4 +1,4 @@
-Standard: Cpp11
+Standard: Auto
 BasedOnStyle: LLVM
 IndentWidth: 4
 ColumnLimit: 0
@@ -6,6 +6,10 @@ AccessModifierOffset: -4
 NamespaceIndentation: None
 BreakBeforeBraces: Custom
 PointerAlignment: Left
+AlignConsecutiveAssignments: true 
+SortIncludes: false
+FixNamespaceComments: false
+IndentPPDirectives: None
 BraceWrapping:
   AfterEnum: true
   AfterStruct: true
@@ -20,8 +24,3 @@ BraceWrapping:
   BeforeElse: false
   SplitEmptyRecord: true
   SplitEmptyNamespace: true
-折りたたむ
-
-
-
-

@@ -1,6 +1,6 @@
 {
     "board": "arduino:avr:nano",
     "configuration": "cpu=atmega328old",
-    "port": "COM9",
+    "port": "COM11",
     "sketch": "Sync-chan.ino"
 }
