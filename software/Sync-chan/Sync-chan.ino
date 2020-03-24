@@ -56,7 +56,8 @@ void switchMode(const Mode newMode)
         break;
     case EXTERNAL_MODE:
         led_external = HIGH;
-        timerValue   = bpmToSyncTimerCounter(1200 / 10.f); // default bpm for checking sync connection
+        timerValue   = bpmToSyncTimerCounter(120.0); // default bpm for checking sync connection
+        Timer1.setPeriod(timerValue);
         break;
     default:
         break;
@@ -153,8 +154,7 @@ void timerFunction()
 
     if (mode == EXTERNAL_MODE) {
         externalSyncNotCommingCounter++;
-
-        if (externalSyncNotCommingCounter >= 16) {
+        if (externalSyncNotCommingCounter >= 16) { // todo
             externalSyncNotCommingCounter = 0;
             switchMode(INTERNAL_MODE);
         }
@@ -260,7 +260,7 @@ int lastExternalBpm = 0;
 void externalMode_loop()
 {
     const auto externalBpm = (int)(syncBpm.getBPM() * 10);
-
+    digitalWrite(pin::Led_Fader_Center, LOW);
     if (externalBpm != lastExternalBpm) {
         lastExternalBpm = externalBpm;
         updateTempo7Seg(externalBpm);
