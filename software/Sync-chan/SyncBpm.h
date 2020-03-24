@@ -20,7 +20,7 @@ public:
     enum
     {
         SYNC_1BEAT,
-        SYNC_2BEAT, // todo
+        SYNC_2BEAT,
     };
 
     SyncBpm() : mode(SYNC_1BEAT), lastMicros(micros()), bpm(120.f), averageDelta(0)
@@ -54,7 +54,7 @@ public:
 
     float getBPM()
     {
-        const auto beatDeltaMsec = averageDelta * 4; // todo
+        const auto beatDeltaMsec = averageDelta * (mode == SYNC_1BEAT ? 4 : 2);
         const float bpm          = 60000000.f / beatDeltaMsec;
         return bpm;
     }

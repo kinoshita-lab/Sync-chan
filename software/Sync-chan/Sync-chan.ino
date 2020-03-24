@@ -9,6 +9,47 @@
 
 #include "SyncBpm.h"
 
+/***************************************
+ * Configurable Parameters
+***************************************/
+const uint8_t INTERNAL_PULSE_MSEC = 5;   // original spec seems 15msec, but not working...
+const float NUDGE_PERCENT         = 1.2; // +-% for nudge
+
+const float DIV_FOR_1STEP = 4.f;
+const float DIV_FOR_2STEP = 2.f;
+
+struct StepParameter
+{
+    float step_div;
+    uint8_t notComingCounterMax;
+    StepParameter() : step_div(DIV_FOR_1STEP), notComingCounterMax(16) {}
+};
+StepParameter stepParameter;
+
+enum StepMode
+{
+    STEP_1,
+    STEP_2,
+};
+int stepMode = STEP_1;
+
+void setStepParameter(StepParameter& s, const StepMode mode)
+{
+    Serial.print("StepMode:");
+    Serial.println(mode);
+    switch (mode) {
+    case STEP_1:
+        s.step_div            = DIV_FOR_1STEP;
+        s.notComingCounterMax = 16;
+        break;
+    case STEP_2:
+        s.step_div            = DIV_FOR_2STEP;
+        s.notComingCounterMax = 8;
+    default:
+        break;
+    }
+}
+
 uint32_t timerValue = 0;
 
 TM1640 tm1640(pin::DIN_7Seg, pin::SCLK_7Seg);
@@ -29,28 +70,23 @@ pin::DigitalPinConfig digitalPinConfigs[] = {
     {pin::Led_Fader_Center, OUTPUT},
 };
 
-enum
-{
-    INTERNAL_PULSE_MSEC = 5, // original spec seems 15msec
-};
-
-enum Mode
+enum ApplicationMode
 {
     INTERNAL_MODE,
     EXTERNAL_MODE,
     UNKNOWN_MODE,
 };
 
-Mode mode = UNKNOWN_MODE;
+ApplicationMode applicationMode = UNKNOWN_MODE;
 
-void switchMode(const Mode newMode)
+void switchMode(const uint8_t newMode)
 {
-    mode = newMode;
+    applicationMode = newMode;
 
     auto led_internal = LOW;
     auto led_external = LOW;
 
-    switch (mode) {
+    switch (applicationMode) {
     case INTERNAL_MODE:
         led_internal = HIGH;
         break;
@@ -72,20 +108,19 @@ void externalMode_loop();
 
 void timer2Callback()
 {
-    if (mode == INTERNAL_MODE) {
+    if (applicationMode == INTERNAL_MODE) {
         digitalWrite(pin::Sync_Out, LOW);
     }
 
     MsTimer2::stop();
 }
 
-int interruptCounter              = 0; // todo follow step size
 int externalSyncNotCommingCounter = 0;
 void externalSyncInterrupt()
 {
     externalSyncNotCommingCounter = 0;
 
-    if (mode == INTERNAL_MODE) {
+    if (applicationMode == INTERNAL_MODE) {
         switchMode(EXTERNAL_MODE);
     }
 
@@ -97,6 +132,22 @@ void externalSyncInterrupt()
     }
 }
 
+void showStepMode(const int mode)
+{
+    switch (mode) {
+    case bootMode::NORMAL_1STEP:
+        updateTempo7Seg(1111);
+        break;
+    case bootMode::NORMAL_2STEP:
+        updateTempo7Seg(2222);
+        break;
+    default:
+        break;
+    }
+    tm1640.loop();
+    delay(1000);
+}
+
 void setup()
 {
     for (auto&& config : digitalPinConfigs) {
@@ -104,17 +155,23 @@ void setup()
     }
 
     Serial.begin(115200);
-    const auto mode = bootMode::getBootMode();
+    auto mode = bootMode::getBootMode();
     Serial.print("Boot Mode: ");
-    Serial.println(mode);
+    Serial.println(bootMode::bootModeText(mode));
 
     if (mode == bootMode::INSPECTION) {
         startHardwareInspection();
+        mode = bootMode::NORMAL_1STEP;
     }
+    stepMode = mode == bootMode::NORMAL_1STEP ? STEP_1 : STEP_2;
+    setStepParameter(stepParameter, stepMode);
+    Serial.println(stepMode);
+    syncBpm.setMode(stepMode == STEP_1 ? SyncBpm::SYNC_1BEAT : SyncBpm::SYNC_2BEAT);
+
+    tm1640.init(4, 2);
+    showStepMode(mode);
 
     MsTimer2::set(INTERNAL_PULSE_MSEC, timer2Callback);
-    tm1640.init(4, 2);
-
     Timer1.initialize();
     Timer1.attachInterrupt(timerFunction);
     Timer1.start();
@@ -145,16 +202,16 @@ int nudge()
 
 void timerFunction()
 {
-    if (mode == INTERNAL_MODE) {
+    if (applicationMode == INTERNAL_MODE) {
         digitalWrite(pin::Sync_Out, HIGH);
         Timer1.setPeriod(timerValue); // timer period must be set here to make "continuous" tempo output
         MsTimer2::start();
         return;
     }
 
-    if (mode == EXTERNAL_MODE) {
+    if (applicationMode == EXTERNAL_MODE) {
         externalSyncNotCommingCounter++;
-        if (externalSyncNotCommingCounter >= 16) { // todo
+        if (externalSyncNotCommingCounter >= stepParameter.notComingCounterMax) {
             externalSyncNotCommingCounter = 0;
             switchMode(INTERNAL_MODE);
         }
@@ -163,13 +220,13 @@ void timerFunction()
 
 uint32_t bpmToSyncTimerCounter(const float bpm)
 {
-    const auto ret = (uint32_t)((60000000 / bpm / 4.f) + 0.5);
+    const auto ret = (uint32_t)((60000000 / bpm / stepParameter.step_div) + 0.5);
     return ret;
 }
 
 void loop()
 {
-    switch (mode) {
+    switch (applicationMode) {
     case INTERNAL_MODE:
         internalMode_loop();
         break;
@@ -224,7 +281,6 @@ void internalMode_loop()
     if (buttonDown) {
         tapTempoChanged = true;
         newTapTempo     = (int)(tapTempo.getBPM() * 10);
-        Serial.println(newTapTempo);
     }
 
     bool knobTempoChanged = false;
@@ -244,7 +300,7 @@ void internalMode_loop()
     }
     lastTempo = newTempo;
 
-    const int32_t nudgedTempo = newTempo + (newTempo * nudge() * 1.2 / 100.f);
+    const int32_t nudgedTempo = newTempo + (newTempo * nudge() * NUDGE_PERCENT / 100.f);
     const int32_t faderTempo  = nudgedTempo * (100.f + getFaderPercent()) / 100.f;
 
     updateTempo7Seg(faderTempo);

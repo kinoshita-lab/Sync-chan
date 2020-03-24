@@ -10,4 +10,5 @@ enum
     INSPECTION = 0,
 };
 int getBootMode();
+const char* bootModeText(const int mode);
 }

@@ -22,7 +22,7 @@ public:
             sum += raw;
         }
         sum >>= 2;
-        value = (int)(value * 0.95 + sum * 0.05);
+        value = (int)(value * 0.98 + sum * 0.02);
 
         return value;
     }
@@ -31,7 +31,7 @@ private:
     enum
     {
         SHIFT_ROUND = 3,
-        DEAD_BAND = 4,
+        DEAD_BAND   = 4,
     };
 
     int adcPin;
