@@ -255,6 +255,7 @@ void internalMode_loop()
 {
     const auto buttonDown = digitalRead(pin::Tap) == LOW;
     tapTempo.update(buttonDown);
+    digitalWrite(pin::Led_Tap, buttonDown);
 
     int32_t newTapTempoBpm = 0;
     bool tapTempoChanged   = false;
