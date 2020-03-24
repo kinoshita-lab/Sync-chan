@@ -15,48 +15,11 @@
 const uint8_t INTERNAL_PULSE_MSEC = 5;   // original spec seems 15msec, but not working...
 const float NUDGE_PERCENT         = 1.2; // +-% for nudge
 
+/***************************************
+ * Constants
+***************************************/
 const float DIV_FOR_1STEP = 4.f;
 const float DIV_FOR_2STEP = 2.f;
-
-struct StepParameter
-{
-    float step_div;
-    uint8_t notComingCounterMax;
-    StepParameter() : step_div(DIV_FOR_1STEP), notComingCounterMax(16) {}
-};
-StepParameter stepParameter;
-
-enum StepMode
-{
-    STEP_1,
-    STEP_2,
-};
-int stepMode = STEP_1;
-
-void setStepParameter(StepParameter& s, const StepMode mode)
-{
-    Serial.print("StepMode:");
-    Serial.println(mode);
-    switch (mode) {
-    case STEP_1:
-        s.step_div            = DIV_FOR_1STEP;
-        s.notComingCounterMax = 16;
-        break;
-    case STEP_2:
-        s.step_div            = DIV_FOR_2STEP;
-        s.notComingCounterMax = 8;
-    default:
-        break;
-    }
-}
-
-uint32_t timerValue = 0;
-
-TM1640 tm1640(pin::DIN_7Seg, pin::SCLK_7Seg);
-ArduinoTapTempo tapTempo;
-AdcReader tempoAdc(pin::Tempo);
-AdcReader faderAdc(pin::Fader);
-SyncBpm syncBpm;
 
 pin::DigitalPinConfig digitalPinConfigs[] = {
     {pin::Sync_Out, OUTPUT},
@@ -70,14 +33,59 @@ pin::DigitalPinConfig digitalPinConfigs[] = {
     {pin::Led_Fader_Center, OUTPUT},
 };
 
+/***************************************
+ * Modules
+***************************************/
+TM1640 tm1640(pin::DIN_7Seg, pin::SCLK_7Seg);
+ArduinoTapTempo tapTempo;
+AdcReader tempoAdc(pin::Tempo);
+AdcReader faderAdc(pin::Fader);
+SyncBpm syncBpm;
+
+/***************************************
+ * Internal States
+***************************************/
+enum StepMode
+{
+    STEP_1,
+    STEP_2,
+};
+int stepMode = STEP_1;
+struct StepParameter
+{
+    float step_div;
+    uint8_t notComingCounterMax;
+    StepParameter() : step_div(DIV_FOR_1STEP), notComingCounterMax(16) {}
+};
+StepParameter stepParameter;
+uint32_t lastKnobBpm              = 0;
+uint32_t lastTapBpm               = 0;
+uint32_t lastBpm                  = 0;
+int lastExternalBpm               = 0;
+uint32_t timerValue               = 0;
+int externalSyncNotCommingCounter = 0;
 enum ApplicationMode
 {
     INTERNAL_MODE,
     EXTERNAL_MODE,
     UNKNOWN_MODE,
 };
-
 ApplicationMode applicationMode = UNKNOWN_MODE;
+
+void setStepParameter(StepParameter& s, const StepMode mode)
+{
+    switch (mode) {
+    case STEP_1:
+        s.step_div            = DIV_FOR_1STEP;
+        s.notComingCounterMax = 16;
+        break;
+    case STEP_2:
+        s.step_div            = DIV_FOR_2STEP;
+        s.notComingCounterMax = 8;
+    default:
+        break;
+    }
+}
 
 void switchMode(const uint8_t newMode)
 {
@@ -103,9 +111,6 @@ void switchMode(const uint8_t newMode)
     digitalWrite(pin::Led_External, led_external);
 }
 
-void internalMode_loop();
-void externalMode_loop();
-
 void timer2Callback()
 {
     if (applicationMode == INTERNAL_MODE) {
@@ -115,7 +120,6 @@ void timer2Callback()
     MsTimer2::stop();
 }
 
-int externalSyncNotCommingCounter = 0;
 void externalSyncInterrupt()
 {
     externalSyncNotCommingCounter = 0;
@@ -173,7 +177,7 @@ void setup()
 
     MsTimer2::set(INTERNAL_PULSE_MSEC, timer2Callback);
     Timer1.initialize();
-    Timer1.attachInterrupt(timerFunction);
+    Timer1.attachInterrupt(timerOneInterrupt);
     Timer1.start();
     switchMode(INTERNAL_MODE);
     attachInterrupt(digitalPinToInterrupt(pin::Ext_Sync), externalSyncInterrupt, CHANGE);
@@ -200,7 +204,7 @@ int nudge()
     return minus + plus;
 }
 
-void timerFunction()
+void timerOneInterrupt()
 {
     if (applicationMode == INTERNAL_MODE) {
         digitalWrite(pin::Sync_Out, HIGH);
@@ -240,10 +244,6 @@ void loop()
     tm1640.loop();
 }
 
-uint32_t lastKnobTempo = 0;
-uint32_t lastTapTempo  = 0;
-uint32_t lastTempo     = 0;
-
 uint32_t getKnobTempo()
 {
     auto knob    = tempoAdc.read();
@@ -276,43 +276,43 @@ void internalMode_loop()
     const auto buttonDown = digitalRead(pin::Tap) == LOW;
     tapTempo.update(buttonDown);
 
-    int32_t newTapTempo  = 0;
-    bool tapTempoChanged = false;
+    int32_t newTapTempoBpm = 0;
+    bool tapTempoChanged   = false;
     if (buttonDown) {
         tapTempoChanged = true;
-        newTapTempo     = (int)(tapTempo.getBPM() * 10);
+        newTapTempoBpm  = (int)(tapTempo.getBPM() * 10);
     }
 
-    bool knobTempoChanged = false;
-    auto knobTempo        = getKnobTempo();
-    if (knobTempo != lastKnobTempo) {
-        knobTempoChanged = true;
-        lastKnobTempo    = knobTempo;
+    auto knobBpmChanged = false;
+    auto knobBpm        = getKnobTempo();
+    if (knobBpm != lastKnobBpm) {
+        knobBpmChanged = true;
+        lastKnobBpm    = knobBpm;
     }
 
-    int32_t newTempo = 0;
+    int32_t newBpm = 0;
     if (tapTempoChanged) {
-        newTempo = newTapTempo;
-    } else if (knobTempoChanged) {
-        newTempo = knobTempo;
+        newBpm = newTapTempoBpm;
+    } else if (knobBpmChanged) {
+        newBpm = knobBpm;
     } else {
-        newTempo = lastTempo;
+        newBpm = lastBpm;
     }
-    lastTempo = newTempo;
+    lastBpm = newBpm;
 
-    const int32_t nudgedTempo = newTempo + (newTempo * nudge() * NUDGE_PERCENT / 100.f);
-    const int32_t faderTempo  = nudgedTempo * (100.f + getFaderPercent()) / 100.f;
+    const int32_t nudgedBpm  = newBpm + (newBpm * nudge() * NUDGE_PERCENT / 100.f);
+    const int32_t faderedBpm = nudgedBpm * (100.f + getFaderPercent()) / 100.f;
 
-    updateTempo7Seg(faderTempo);
+    updateTempo7Seg(faderedBpm);
 
-    const auto newTimerValue = bpmToSyncTimerCounter(nudgedTempo / 10.f);
+    const auto newTimerValue = bpmToSyncTimerCounter(faderedBpm / 10.f);
 
     if (timerValue != newTimerValue) {
         timerValue = newTimerValue;
+        Serial.println(timerValue);
     }
 }
 
-int lastExternalBpm = 0;
 void externalMode_loop()
 {
     const auto externalBpm = (int)(syncBpm.getBPM() * 10);
